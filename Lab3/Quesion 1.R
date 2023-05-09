@@ -79,7 +79,8 @@ ggplot(data=sample_gibbs, aes(x = 1:length(sigma_sample), y = sigma_sample)) +
 
 
 #in lecture slide IF=1 + 2 ∑^∞_{k=1} ρ_k where  ρ_k is autocorrelation at lag k
-my_acf <- acf(sample_gibbs)
-if_mu <- 1 + 2*sum(my_acf)
-if_sigma <- 1 + 2*sum(acf[,2])
-
+my_acf <- acf(sample_gibbs$mu_sample)
+if_mu <- 1 + 2 * sum(my_acf$acf[-1])
+my_acf <- acf(sample_gibbs$sigma_sample)
+if_sigma <- 1 + 2 * sum(my_acf$acf[-1])
+if_sigma
