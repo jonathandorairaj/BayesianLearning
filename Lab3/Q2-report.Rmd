@@ -1,0 +1,204 @@
+---
+title: "Q2 report"
+author: "Jonathan Dorairaj,Yi Hung Chen"
+date: "2023-05-15"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.align = "center")
+knitr::opts_chunk$set(fig.width=8, fig.height=5)
+knitr::opts_chunk$set(warning=FALSE)
+library(mvtnorm)
+library(ggplot2)
+library(gridExtra)
+
+
+
+```
+
+
+## Metropolis Random Walk for Poisson regression 
+
+### a) Obtain the maximum likelihood estimator of $\beta$ in the Poisson regression model for the eBay data [Hint: glm.R, don't forget that glm() adds its own intercept so don't input the covariate Const]  Which covariates are signifcant?
+
+```{r}
+ebay_data <- read.table("eBayNumberOfBidderData.dat", header = TRUE)
+
+model <- glm(formula = nBids ~ .,data = ebay_data[,-2],family = 'poisson')
+
+summary(model)
+```
+
+The estimates of beta are `r model$coefficients`
+
+The significant covariates are **'VerfiyID','Sealed','LogBook'** and **'MinBidShare'** and **'Intercept'.'MajBlem'** is also significant but to a less degree compared to the ones mentioned before. 
+
+
+### b) Let's do a Bayesian analysis of the Poisson regression. Let the prior be $\beta \sim \mathcal{N}[0,\,100 \cdot (X^{T}X)^{-1}]$, where X is the n × p covariate matrix. This is a commonly used prior, which is called Zellner's g-prior. Assume first that the posterior density is approximately multivariate normal:
+$$
+\beta \mid y \sim \mathcal{N}\left(\tilde{\beta}, J_{\mathbf{y}}^{-1}(\tilde{\beta})\right)
+$$
+**where $\tilde{\beta}$ is the posterior mode and $J_{\mathbf{y}}(\tilde{\beta})$ is the negative Hessian at the posterior mode. $\tilde{\beta}$ and $J_{\mathbf{y}}(\tilde{\beta})$ can be obtained by numerical optimization (optim.R) exactly like you already did for the logistic regression in Lab 2 (but with the log posterior function replaced by the corresponding one for the Poisson model, which you have to code up.).**
+
+The Poisson distribution density is given by : 
+$$p(y \mid x ; \beta)= \frac{e^{y \beta^{\prime} x} e^{-e^{\beta^{\prime}}}}{y !}$$
+The log likelihood of the poisson distribution is : 
+$$\ell(\beta \mid X, Y)=\log L(\beta \mid X, Y)=\sum_{i=1}^n\left(y \beta^{\prime} x-e^{\beta^{\prime} x}-\log y!\right)$$
+
+```{r}
+LogPosteriorFunc <- function(betas, X, y, mu, Sigma){
+  log_prior <- dmvnorm(betas, mu, Sigma, log=TRUE)
+  log_likelihood <- sum(X%*%betas * y - exp(X%*%betas) -log(factorial(y)))
+  return(log_prior + log_likelihood)
+}
+
+# Initialize values
+#remove 1st column since that is target variable and convert to matrix 
+n_cols <- ncol(ebay_data[,-1])
+covariates <- as.matrix(ebay_data[,-1])
+labels <- as.matrix(ebay_data[,1])
+mu <- rep(0, n_cols)
+initVal <- matrix(0, n_cols, 1)
+Sigma <- as.matrix(100 * solve(t(covariates)%*%covariates))
+
+# Optimizer
+OptimRes <- optim(initVal, LogPosteriorFunc, gr = NULL, y = labels, X = covariates,
+                  mu = mu, Sigma = Sigma, method=c("BFGS"), 
+                  control=list(fnscale=-1), hessian=TRUE)
+
+beta_mode <- OptimRes$par
+jacobian <- OptimRes$hessian
+inv_jacobian <- -solve(jacobian)
+
+beta_draws <- as.matrix(rmvnorm(10000,mean = beta_mode,sigma = inv_jacobian))
+beta_estimates <- colMeans(beta_draws)
+
+
+```
+
+
+
+### c) Let's simulate from the actual posterior of $\beta$ using the Metropolis algorithm and compare the results with the approximate results in b). Program a general function that uses the Metropolis algorithm to generate random draws from an arbitrary posterior density. In order to show that it is a general function for any model, we denote the vector of model parameters by $\theta$. Let the proposal density be the multivariate normal density mentioned in Lecture 8 (random walk Metropolis):
+$$
+\theta_p \mid \theta^{(i-1)} \sim N\left(\theta^{(i-1)}, c \cdot \Sigma\right)
+$$ 
+**where $\Sigma=J_{\mathbf{y}}^{-1}(\tilde{\beta})$ was obtained in b). The value $c$ is a tuning parameter and should be an input to your Metropolis function. The user of your Metropolis function should be able to supply her own posterior density function, not necessarily for the Poisson regression, and still be able to use your Metropolis function. This is not so straightforward, unless you have come across function objects in R. The note HowToCo deRWM.pdf in Lisam describes how you can do this in R. Now, use your new Metropolis function to sample from the posterior of $\beta$ in the Poisson regression for the eBay dataset. Assess MCMC convergence by graphical methods. **
+
+```{r,fig.height=10}
+MetHas_RandomWalk <- function(nDraws,fun,mu,Sigma,c){
+  
+  #initialize matrix 
+  draw_matrix <- matrix(0,nrow = nDraws,ncol = n_cols)
+  #initialize first row to mu 
+  draw_matrix[1,] <- mu
+  
+  for(i in 2:nDraws){
+    # sample from multivariate normal distribution
+    proposed_sample <- as.vector(rmvnorm(n = 1,mean = draw_matrix[i-1,],
+                                         sigma = c*as.matrix(Sigma)))
+    #print(proposed_sample)
+    # IMPORTANT : the log is inside the posterior function
+    log_acceptance_prob <- exp(fun(proposed_sample)- fun(draw_matrix[i-1,]))
+    
+    #random sample
+    u <- runif(1)
+    # calculate acceptance probability
+    a <- min(1,log_acceptance_prob)
+    
+    
+    if(u <= a){
+      #accept sample
+      draw_matrix[i,] <- proposed_sample
+    }
+    else{
+      # stay at same values from previous draw
+      draw_matrix[i,] <- draw_matrix[i-1,]
+    }
+    
+  }
+  return(draw_matrix)
+}
+  
+logPostFunc <- function(theta){
+  res <- dmvnorm(theta,mean = beta_estimates,sigma = inv_jacobian,log = TRUE)
+  if(is.na(res)){
+    print(theta)
+  }
+  return(res)
+}
+
+df <- MetHas_RandomWalk(nDraws = 10000,fun = logPostFunc,mu = rep(0,n_cols),
+                        Sigma = inv_jacobian,c = 1)
+# assign colnames
+colnames(df) <- colnames(ebay_data)[2:10]
+
+## plotting 
+plot_list <- list()
+for (col in colnames(df)) {
+  # Plot iterations vs every column
+  p <- ggplot(data = as.data.frame(df), aes_string(x = 1:nrow(df), y = col)) +
+    geom_line(col = 'blue') +
+    labs(x = "Iterations", y = col) 
+  
+  #show plot
+  #print(p)
+  plot_list[[col]] <- p
+}
+
+# Arranging in 1 fig
+grid.arrange(grobs = plot_list, ncol = 2)
+
+```
+
+Assessing the plots of the 9 column variables vs Iterations, we see that convergence usually occurs after 1500 iterations. (burn-in period)
+
+### d) Use the MCMC draws from c) to simulate from the predictive distribution of the number of bidders in a new auction with the characteristics below. Plot the predictive distribution. What is the probability of no bidders in this new auction?
+- Power Seller $=1$
+- VerifyID $=0$
+- Sealed $=1$
+- $\mathrm{MinBlem}=0$
+- MajBlem = 1
+- LargNeg $=0$
+- $\mathbf{L o g}$ Book $=1.2$
+- MinBidShare $=0.8$
+
+
+\begin{equation*}
+\centering
+\text{Mean} = \lambda = e^{\beta' \cdot x}
+\end{equation*}
+
+
+```{r}
+# extra 1 at the start for the intercept - Const
+new_data <- c(1,1,0,1,0,1,0,1.2,0.8)
+
+# lambda =  e^Beta*x
+# discarding first 1500 samples as burn-in period
+lambda <- exp(df[-c(1:1500),] %*% new_data)
+
+samples <- c()
+
+for (i in 1:nrow(df[-c(1:1500),])) {
+  #sample from each row of df to get the predictive distribution based on the     
+  #posterior betas
+  samples[i] <- rpois(1,lambda = lambda[i])
+  
+}
+
+hist(samples)
+
+res <- length(samples[samples == 0])/length(samples)
+```
+
+The probability of have zero bidders in the new auction is `r res*100`%.
+
+\newpage 
+## Appendix
+
+```{r ref.label=knitr::all_labels(), eval=FALSE , echo=TRUE}
+
+```
+
