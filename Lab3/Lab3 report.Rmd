@@ -152,7 +152,7 @@ summary(model)
 
 The estimates of beta are `r model$coefficients`
 
-The significant covariates are **'VerfiyID','Sealed','LogBook'** and **'MinBidShare'** and **'Intercept'.'MajBlem'** is also significant but to a less degree compared to the ones mentioned before. 
+The significant covariates are **'VerfiyID','Sealed','LogBook'** and **'MinBidShare'** and **'Intercept' . 'MajBlem'** is also significant but to a less degree compared to the ones mentioned before. 
 
 
 ### b) Let's do a Bayesian analysis of the Poisson regression. Let the prior be $\beta \sim \mathcal{N}[0,\,100 \cdot (X^{T}X)^{-1}]$, where X is the n × p covariate matrix. This is a commonly used prior, which is called Zellner's g-prior. Assume first that the posterior density is approximately multivariate normal:
