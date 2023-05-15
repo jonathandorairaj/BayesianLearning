@@ -21,37 +21,39 @@ set.seed(12345)
 
 
 ```{r }
+#####Q1
 library(ggplot2)
 library(mvtnorm)
+#library(extraDistr)
 precipitation <- readRDS("Precipitation.rds")
 log_prec <- log(precipitation)
 
-mu_post <- function(mu_0,tau_0_sqr,sigma_sqr_current,y,n){
+mu_post <- function(mu_0,tau_0_sqr,sigma_square_current,y,n){
   
-  tau_n_sqr = 1 / (1/tau_0_sqr + n/sigma_sqr_current)
-  mu_n <- tau_n_sqr * (mu_0/tau_0_sqr + sum(y)/sigma_sqr_current)
+  tau_n_sqr = 1 / (1/tau_0_sqr + n/sigma_square_current)
+  mu_n <- tau_n_sqr * (mu_0/tau_0_sqr + sum(y)/sigma_square_current)
   mupost <- rnorm(1, mu_n, sqrt(tau_n_sqr))
   return(mupost)
   
 }
 
-sigma_sqr_post <- function(mu_current, v_0, sigma_sqr_0, y,n, use_myinvchi=TRUE) {
+sigma_square_post <- function(mu_current, v_0, sigma_square_0, y,n, use_myinvchi=TRUE) {
   
   v_n <- v_0 + n
-  elem1 <- v_0*sigma_sqr_0
+  elem1 <- v_0*sigma_square_0
   elem2 <- sum((y - mu_current)^2)
   elem3 <- n+v_0
   elem_comb <- (elem1+elem2)/elem3
   if (use_myinvchi){
-    sigma_sqr_post <- my_inv_chi(v_n,elem_comb)
+    sigma_square_post <- my_inv_chi(v_n,elem_comb)
   }
   else {
-    sigma_sqr_post <- rinvchisq(1, v_n, elem_comb) #Requires package extraDistr
+    sigma_square_post <- rinvchisq(1, v_n, elem_comb) #Requires package extraDistr
   }
   
   
 
-  return(sigma_sqr_post)
+  return(sigma_square_post)
 }
 
 my_inv_chi<- function(df,tau_sqr) {
@@ -63,34 +65,34 @@ my_inv_chi<- function(df,tau_sqr) {
 #init
 mu_0 <- 0
 tau_0_sqr <- 1
-sigma_sqr_0 <- 1 
+sigma_square_0 <- 1 
 v_0 <- 1 #degree of freedom for chi square
 
-gibbs_sampler <- function(nstep, data, mu_0, tau_0_sqr, v_0, sigma_sqr_0) {
+gibbs_sampler <- function(nstep, data, mu_0, tau_0_sqr, v_0, sigma_square_0) {
   # Init parameters
   mu_current <- 0
-  sigma_sqr_current <- 1
+  sigma_square_current <- 1
 
   mu_samples <- rep(0,nstep)
-  sigma_sqr_samples <- rep(0,nstep)
+  sigma_square_samples <- rep(0,nstep)
   
   for (i in 1:nstep) {
    
-    mu_current <- mu_post(mu_0, tau_0_sqr, sigma_sqr_current, y=data, length(data))
+    mu_current <- mu_post(mu_0, tau_0_sqr, sigma_square_current, y=data, length(data))
     #print(mu_current)
-    sigma_sqr_current <- sigma_sqr_post(mu_current, v_0, sigma_sqr_0, y=data, 
+    sigma_square_current <- sigma_square_post(mu_current, v_0, sigma_square_0, y=data, 
                                         length(data),use_myinvchi=TRUE)
-    #print(sigma_sqr_current)
+    #print(sigma_square_current)
 
     mu_samples[i] <- mu_current
-    sigma_sqr_samples[i] <- sigma_sqr_current
+    sigma_square_samples[i] <- sigma_square_current
   }
   
-  output_df <- data.frame(mu_sample = mu_samples, sigma_sample = sigma_sqr_samples)
+  output_df <- data.frame(mu_sample = mu_samples, sigma_sample = sigma_square_samples)
   return(output_df)
 }
 
-sample_gibbs <- gibbs_sampler(nstep=10000, data=log_prec, mu_0, tau_0_sqr, v_0, sigma_sqr_0)
+sample_gibbs <- gibbs_sampler(nstep=10000, data=log_prec, mu_0, tau_0_sqr, v_0, sigma_square_0)
 ```
 
 In lecture slide$IF = 1 + 2\sum^{\infty}_{k=1} \rho_k$ where  $\rho_k$ is autocorrelation at lag k
@@ -112,8 +114,8 @@ ggplot(data=sample_gibbs, aes(x = 1:length(sigma_sample), y = sigma_sample)) +
   geom_line() +labs(title = "sigma sample")
 ```
   
-###(b) 
-Plot the following in one figure: 
+### (b)  
+Plot the following in one figure:  
 1) a histogram or kernel density estimate of the daily precipitation  
 2) The resulting posterior predictive density using the simulated posterior draws from 
 How well does the posterior predictive density agree with this data?
@@ -137,20 +139,21 @@ Above is the plot of the histogram of the daily precipitation, and the resulting
 
 ## Q3 Time series models in Stan
 
-###(a 
+### (a) 
 Write a function in R that simulates data from the AR(1)-process
 ```{r}
+#####Q3
 mu <- 13
-sigma_sqr <- 3
+sigma_square <- 3
 t <- 300
 phi <- seq(from = -1 ,to = 1, by =0.25 )
 
-ar_func <- function(phi,mu,sigma_sqr,t){
+ar_func <- function(phi,mu,sigma_square,t){
   counter <- 0
   result_vector <- rep(0,t)
   result_vector[1] <- mu 
   for(i in 2:t){
-    epislon <- rnorm(1,0,sqrt(sigma_sqr))
+    epislon <- rnorm(1,0,sqrt(sigma_square))
     x_i <- mu+phi*(result_vector[i-1]-mu)+ epislon
     result_vector[i] <- x_i 
   }
@@ -159,18 +162,18 @@ ar_func <- function(phi,mu,sigma_sqr,t){
 }
 
 
-test_phi_func <- function(phi,mu,sigma_sqr,t){
+test_phi_func <- function(phi,mu,sigma_square,t){
   
   phi_test_df <- data.frame(matrix(0, nrow = t, ncol = length(phi)))
   colnames(phi_test_df) <- phi
   
   for (j in 1:length(phi)) {
-    phi_test <- ar_func(phi[j], mu, sigma_sqr, t)
+    phi_test <- ar_func(phi[j], mu, sigma_square, t)
     phi_test_df[, j] <- phi_test
   }
   return(phi_test_df)
 }
-phi_df <- test_phi_func(phi,mu,sigma_sqr,t)
+phi_df <- test_phi_func(phi,mu,sigma_square,t)
 
 
 for(k in 1:length(phi)){
@@ -180,17 +183,16 @@ for(k in 1:length(phi)){
 }
 ```
   
-As we can observed with different $\phi$, as $\phi$ increase, the gap between peaks are getting larger. This indicate that the data tends to have higher autocorrelation, which means each data point is more correlated with preceding data.  
+As we can observed with different $\phi$, as $\phi$ increase, the gap between peaks are getting larger (not as fluctuate as lower $\phi$). This indicate that the data tends to have higher autocorrelation, which means each data point is more correlated with preceding data.  
 
 ### (b 
 Rstan  
 
 ```{r message=FALSE}
 library(rstan)
-library(StanHeaders)
 set.seed(12345)
-x <- ar_func(phi=0.2, mu, sigma_sqr, t)
-y <- ar_func(phi=0.95, mu, sigma_sqr, t)
+x <- ar_func(phi=0.2, mu, sigma_square, t)
+y <- ar_func(phi=0.95, mu, sigma_square, t)
 
 stan_code <- "
 data {
@@ -240,7 +242,7 @@ warmup <- 500
 model <- stan_model(model_code = stan_code)
 
 # Fit the Stan model to the data
-# Set the conture to avoid too many divergent after warmup
+# Set the control to avoid too many divergent after warmup
 control <- list(adapt_delta = 0.90, stepsize = 0.0001)
 fit<- sampling(model, data = data_list, warmup = warmup, iter = niter, chains = 5,control=control,refresh = 0)
 #refresh = 0 to mute the printout
@@ -275,7 +277,7 @@ n_eff
 The true values are $\mu_x= \mu_y= 13$, $\phi_y=0.95$, $\phi_x=0.2$, $\sigma_x = \sigma_y =\sqrt3 \approx 1.73$
 
 For posterior mean, all the inferred parameter are very close to their true value. Hence we can say that we are able to estimate the true value.
-In terms of 95% credible interval and number of effective posterior sample,  we would say that for estimated $\mu_x$,$\phi_y$, $\sigma_x$ and $\sigma_y$ has narrower credible intervals, while estimated $\mu_x$,$\phi_x$, $\sigma_x$ and $\sigma_y$ has larger number of effective posterior samples. This will indicates the estimate of these inferred parameters is more precise.
+In terms of 95% credible interval and number of effective posterior sample,  we would say that for estimated $\mu_x$, $\phi_y$,  $\sigma_x$ and $\sigma_y$ has narrower credible intervals, while estimated $\mu_x$, $\phi_x$, $\sigma_x$ and $\sigma_y$ has larger number of effective posterior samples. This indicates the estimate of these inferred parameters are more precise.
 
 #### (ii)  
 For each of the two data sets, evaluate the convergence of the samplers and plot the joint posterior of $\mu$ and $\phi$. Comments?
@@ -314,5 +316,5 @@ ggplot(data = posterior_df_y, aes(x = mu_y, y = phi_y)) +
 
 Appendix
 ------------
-```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```{r ref.label=knitr::all_labels(), eval=FALSE , echo=TRUE}
 ```
