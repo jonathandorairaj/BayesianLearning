@@ -90,21 +90,23 @@ ggplot(data = data.frame(y = log_prec), aes(x = y)) +
 ######Q2######
 
 ebay_data <- read.table("eBayNumberOfBidderData.dat", header = TRUE)
-model <- glm(formula = nBids ~ .,data = ebay_data[,-2],family = 'poisson')
-summary(model)
-LogPosteriorFunc <- function(betas, X, y, mu, Sigma){
-  log_prior <- dmvnorm(betas, mu, Sigma, log=TRUE)
-  log_likelihood <- sum(X%*%betas * y - exp(X%*%betas) -log(factorial(y)))
-  return(log_prior + log_likelihood)
-}
+model1 <- glm(formula = nBids ~ .,data = ebay_data[,-2],family = 'poisson')
+summary(model1)
 # Initialize values
-#remove 1st column since that is target variable and convert to matrix
 n_cols <- ncol(ebay_data[,-1])
+#remove 1st column since that is target variable and convert to matrix
+# matrix of features
 covariates <- as.matrix(ebay_data[,-1])
 labels <- as.matrix(ebay_data[,1])
 mu <- rep(0, n_cols)
 initVal <- matrix(0, n_cols, 1)
 Sigma <- as.matrix(100 * solve(t(covariates)%*%covariates))
+LogPosteriorFunc <- function(betas, X, y, mu, Sigma){
+  log_prior <- dmvnorm(betas, mu, Sigma, log=TRUE)
+  log_likelihood <- sum(X%*%betas * y - exp(X%*%betas) -log(factorial(y)))
+  res <- log_prior + log_likelihood
+  return(res)
+}
 # Optimizer
 OptimRes <- optim(initVal, LogPosteriorFunc, gr = NULL, y = labels, X = covariates,
                   mu = mu, Sigma = Sigma, method=c("BFGS"),
@@ -113,7 +115,8 @@ beta_mode <- OptimRes$par
 jacobian <- OptimRes$hessian
 inv_jacobian <- -solve(jacobian)
 beta_draws <- as.matrix(rmvnorm(10000,mean = beta_mode,sigma = inv_jacobian))
-beta_estimates <- colMeans(beta_draws)
+beta_estimate <- colMeans(beta_draws)
+hist(beta_draws,breaks = 50,main = 'Histogram of Posterior Draws',xlab = 'Betas')
 MetHas_RandomWalk <- function(nDraws,fun,mu,Sigma,c){
   #initialize matrix
   draw_matrix <- matrix(0,nrow = nDraws,ncol = n_cols)
@@ -133,8 +136,6 @@ MetHas_RandomWalk <- function(nDraws,fun,mu,Sigma,c){
     if(u <= a){
       #accept sample
       draw_matrix[i,] <- proposed_sample
-      
-      
     }
     else{
       # stay at same values from previous draw
@@ -143,8 +144,9 @@ MetHas_RandomWalk <- function(nDraws,fun,mu,Sigma,c){
   }
   return(draw_matrix)
 }
+# this function we pass to MetHas Algorithm, can be changed to another posterior density
 logPostFunc <- function(theta){
-  res <- dmvnorm(theta,mean = beta_estimates,sigma = inv_jacobian,log = TRUE)
+  res <- dmvnorm(theta,mean = beta_estimate,sigma = inv_jacobian,log = TRUE)
   if(is.na(res)){
     print(theta)
   }
@@ -177,13 +179,11 @@ for (i in 1:nrow(df[-c(1:1500),])) {
   #sample from each row of df to get the predictive distribution based on the
   #posterior betas
   samples[i] <- rpois(1,lambda = lambda[i])
-  
-  
 }
 hist(samples)
-res <- length(samples[samples == 0])/length(samples) 
-  
-  
+res <- length(samples[samples == 0])/length(samples)
+
+
 ######Q3######
 
 mu <- 13

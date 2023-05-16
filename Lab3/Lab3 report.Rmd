@@ -138,21 +138,23 @@ ggplot(data = data.frame(y = log_prec), aes(x = y)) +
 Above is the plot of the histogram of the daily precipitation, and the resulting posterior predictive density(red line). We can say that the posterior prediction does not totally agree with the existing data, especially towards to left-hand side of the mode.
 
 \newpage
-## Q2 Metropolis Random Walk for Poisson regression 
+## Metropolis Random Walk for Poisson regression 
 
 ### a) Obtain the maximum likelihood estimator of $\beta$ in the Poisson regression model for the eBay data [Hint: glm.R, don't forget that glm() adds its own intercept so don't input the covariate Const]  Which covariates are signifcant?
 
 ```{r}
+
+######Q2######
 ebay_data <- read.table("eBayNumberOfBidderData.dat", header = TRUE)
 
-model <- glm(formula = nBids ~ .,data = ebay_data[,-2],family = 'poisson')
+model1 <- glm(formula = nBids ~ .,data = ebay_data[,-2],family = 'poisson')
 
-summary(model)
+summary(model1)
 ```
 
-The estimates of beta are `r model$coefficients`
+The estimates of beta are `r model1$coefficients`
 
-The significant covariates are **'VerfiyID','Sealed','LogBook'** and **'MinBidShare'** and **'Intercept' . 'MajBlem'** is also significant but to a less degree compared to the ones mentioned before. 
+The significant covariates are **'VerfiyID','Sealed','LogBook'** and **'MinBidShare'** and **'Intercept'.'MajBlem'** is also significant but to a less degree compared to the ones mentioned before. 
 
 
 ### b) Let's do a Bayesian analysis of the Poisson regression. Let the prior be $\beta \sim \mathcal{N}[0,\,100 \cdot (X^{T}X)^{-1}]$, where X is the n × p covariate matrix. This is a commonly used prior, which is called Zellner's g-prior. Assume first that the posterior density is approximately multivariate normal:
@@ -167,20 +169,23 @@ The log likelihood of the poisson distribution is :
 $$\ell(\beta \mid X, Y)=\log L(\beta \mid X, Y)=\sum_{i=1}^n\left(y \beta^{\prime} x-e^{\beta^{\prime} x}-\log y!\right)$$
 
 ```{r}
+# Initialize values
+
+n_cols <- ncol(ebay_data[,-1])
+#remove 1st column since that is target variable and convert to matrix 
+# matrix of features 
+covariates <- as.matrix(ebay_data[,-1])
+labels <- as.matrix(ebay_data[,1])
+mu <- rep(0, n_cols) 
+initVal <- matrix(0, n_cols, 1)
+Sigma <- as.matrix(100 * solve(t(covariates)%*%covariates))
+
 LogPosteriorFunc <- function(betas, X, y, mu, Sigma){
   log_prior <- dmvnorm(betas, mu, Sigma, log=TRUE)
   log_likelihood <- sum(X%*%betas * y - exp(X%*%betas) -log(factorial(y)))
-  return(log_prior + log_likelihood)
+  res <- log_prior + log_likelihood
+  return(res)
 }
-
-# Initialize values
-#remove 1st column since that is target variable and convert to matrix 
-n_cols <- ncol(ebay_data[,-1])
-covariates <- as.matrix(ebay_data[,-1])
-labels <- as.matrix(ebay_data[,1])
-mu <- rep(0, n_cols)
-initVal <- matrix(0, n_cols, 1)
-Sigma <- as.matrix(100 * solve(t(covariates)%*%covariates))
 
 # Optimizer
 OptimRes <- optim(initVal, LogPosteriorFunc, gr = NULL, y = labels, X = covariates,
@@ -192,11 +197,14 @@ jacobian <- OptimRes$hessian
 inv_jacobian <- -solve(jacobian)
 
 beta_draws <- as.matrix(rmvnorm(10000,mean = beta_mode,sigma = inv_jacobian))
-beta_estimates <- colMeans(beta_draws)
+beta_estimate <- colMeans(beta_draws)
 
 
 ```
 
+```{r,eval=FALSE}
+hist(beta_draws,breaks = 50,main = 'Histogram of Posterior Draws',xlab = 'Betas')
+```
 
 
 ### c) Let's simulate from the actual posterior of $\beta$ using the Metropolis algorithm and compare the results with the approximate results in b). Program a general function that uses the Metropolis algorithm to generate random draws from an arbitrary posterior density. In order to show that it is a general function for any model, we denote the vector of model parameters by $\theta$. Let the proposal density be the multivariate normal density mentioned in Lecture 8 (random walk Metropolis):
@@ -239,9 +247,10 @@ MetHas_RandomWalk <- function(nDraws,fun,mu,Sigma,c){
   }
   return(draw_matrix)
 }
-  
+
+# this function we pass to MetHas Algorithm, can be changed to another posterior density  
 logPostFunc <- function(theta){
-  res <- dmvnorm(theta,mean = beta_estimates,sigma = inv_jacobian,log = TRUE)
+  res <- dmvnorm(theta,mean = beta_estimate,sigma = inv_jacobian,log = TRUE)
   if(is.na(res)){
     print(theta)
   }
