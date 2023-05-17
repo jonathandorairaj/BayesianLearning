@@ -283,7 +283,7 @@ ggplot(data = posterior_df_x, aes(x = mu_x, y = phi_x)) +
   stat_density_2d() +
   xlab("mu_x") +
   ylab("phi_x") +
-  ggtitle("Joint distribution of mu_x and phi_x")
+  ggtitle("Join tposterior of mu_x and phi_x")
 
 posterior_y <- extract(fit, pars = c("mu_y", "phi_y"))
 posterior_df_y <- data.frame(posterior_y)
@@ -291,4 +291,4 @@ ggplot(data = posterior_df_y, aes(x = mu_y, y = phi_y)) +
   stat_density_2d()+
   xlab("mu_y") +
   ylab("phi_y") +
-  ggtitle("Joint distribution of mu_y and phi_y")
+  ggtitle("Joint posterior of mu_y and phi_y")
